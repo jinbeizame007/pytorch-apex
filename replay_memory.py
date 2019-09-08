@@ -42,15 +42,18 @@ class NStepMemory(dict):
 
 
 class ReplayMemory:
-    def __init__(self, memory_size=100000, batch_size=32, n_step=3, state_size=(4,), alpha=0.4):#(3, 84, 84), alpha=0.4):
+    def __init__(self, memory_size=100000, batch_size=32, n_step=3, state_size=(84,84), action_repeat=4, n_stacks=4, alpha=0.4):#(3, 84, 84), alpha=0.4):
         self.index = 0
-        self.n_step = n_step
         self.memory_size = memory_size
         self.batch_size = batch_size
+        self.n_step = n_step
+        self.state_size = (action_repeat,) + state_size
+        self.action_repeat = action_repeat
+        self.n_stacks = n_stacks // action_repeat
         self.alpha = alpha
 
         self.memory = dict()
-        self.memory['state'] = np.zeros((self.memory_size, *state_size), dtype=np.float32)
+        self.memory['state'] = np.zeros((self.memory_size, *self.state_size), dtype=np.uint8)
         self.memory['action'] = np.zeros((self.memory_size, 1), dtype=np.int8)
         self.memory['reward'] = np.zeros((self.memory_size, 1), dtype=np.float32)
         self.memory['done'] = np.zeros((self.memory_size, 1), dtype=np.float32)
@@ -63,7 +66,7 @@ class ReplayMemory:
     
     def add(self, state, action, reward, done, stack_count):
         index = self.index % self.memory_size
-        self.memory['state'][index] = state#(state * 255)
+        self.memory['state'][index] = state * 255
         self.memory['action'][index] = action
         self.memory['reward'][index] = reward
         self.memory['done'][index] = 1 if done else 0
@@ -134,10 +137,10 @@ class ReplayMemory:
 
     def get_stacked_state(self, index):
         stack_count = self.memory['stack_count'][index]
-        start_index = index - (4 - stack_count)
+        start_index = index - (self.n_stacks - stack_count)
         if start_index < 0:
             start_index = self.memory_size + start_index
-        stack_index = [start_index for _ in range(stack_count)] + [(start_index+1+i)%self.memory_size for i in range(4-stack_count)]
+        stack_index = [start_index for _ in range(stack_count)] + [(start_index+1+i)%self.memory_size for i in range(self.n_stacks-stack_count)]
         stacked_state = np.concatenate([self.memory['state'][i] for i in stack_index])
         return stacked_state
 
@@ -152,16 +155,16 @@ class ReplayMemory:
         next_index = (index + self.n_step) % self.memory_size
 
         batch = dict()
-        #batch['state'] = np.stack([self.get_stacked_state(i) for i in index])
-        #batch['next_state'] = np.stack([self.get_stacked_state(i) for i in next_index])
-        batch['state'] = self.memory['state'][index]
-        batch['next_state'] = self.memory['state'][next_index]
+        batch['state'] = np.stack([self.get_stacked_state(i) for i in index])
+        batch['next_state'] = np.stack([self.get_stacked_state(i) for i in next_index])
+        #batch['state'] = self.memory['state'][index]
+        #batch['next_state'] = self.memory['state'][next_index]
         batch['action'] = self.memory['action'][index]
         batch['reward'] = self.memory['reward'][index]
         batch['done'] = self.memory['done'][index]
 
-        #for key in ['state', 'next_state']:
-        #    batch[key] = batch[key].astype(np.float32) / 255.
+        for key in ['state', 'next_state']:
+            batch[key] = batch[key].astype(np.float32) / 255.
         
         for key in batch.keys():
             batch[key] = torch.FloatTensor(batch[key]).to(device)

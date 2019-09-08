@@ -15,7 +15,7 @@ class QNet(nn.Module):
 
         self.vis_layers = nn.Sequential(
             # (84, 84, *) -> (20, 20, 16)
-            nn.Conv2d(3, 32, kernel_size=8, stride=4),
+            nn.Conv2d(4, 32, kernel_size=8, stride=4),
             nn.ReLU(True),
             # (20, 20, 16) -> (9, 9, 32)
             nn.Conv2d(32, 32, kernel_size=4, stride=2),
@@ -28,7 +28,7 @@ class QNet(nn.Module):
 
         self.l1 = nn.Sequential(
             # (7 * 7 * 64, ) -> (512, )
-            nn.Linear(9 * 9 * 32, 512),
+            nn.Linear(7 * 7 * 64, 512),
             nn.ReLU(True)
         )
 
@@ -45,18 +45,19 @@ class QNet(nn.Module):
         self.l4 = nn.Linear(50, 2)
 
         self.val = nn.Sequential(
-            #nn.Linear(512, 256),
-            #nn.ReLU(True),
-            nn.Linear(50, 1)
+            nn.Linear(512, 256),
+            nn.ReLU(True),
+            nn.Linear(256, 1)
         )
 
         self.adv = nn.Sequential(
-            #nn.Linear(512, 256),
-            #nn.ReLU(True),
-            nn.Linear(50, 2)
+            nn.Linear(512, 256),
+            nn.ReLU(True),
+            nn.Linear(256, 6)
         )
 
     def forward(self, state):
+        """
         state = torch.FloatTensor(state).view(-1,4).to(self.device)
         h = self.l2(state)
         h = self.l3(h)
@@ -64,20 +65,19 @@ class QNet(nn.Module):
         adv = self.adv(h)
         q_val = val + adv - adv.mean(1, keepdim=True)
         return q_val
-
         """
-        h = self.vis_layers(vis)
-        h = self.common_fc(torch.cat([h, vec], dim=1))
+
+        h = self.vis_layers(state).view(-1,7*7*64)
+        h = self.l1(h)
 
         # V
-        V = self.V_fc(h)
+        V = self.val(h)
         # A
-        A = self.A_fc(h)
+        A = self.adv(h)
         # Q
         Q = V + A - A.mean(1, keepdim=True)
 
         return Q
-        """
     
     def save(self):
         lock = fasteners.InterProcessLock(self.path)

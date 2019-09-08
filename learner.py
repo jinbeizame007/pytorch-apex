@@ -15,12 +15,12 @@ def learner_process(n_actors):
 
 
 class Learner:
-    def __init__(self, n_actors, device='cpu'):
+    def __init__(self, n_actors, device='cuda:0'):
         # params
-        self.gamma = 0.95
+        self.gamma = 0.99
         self.alpha = 0.6
         self.bootstrap_steps = 1
-        self.initial_exploration = 2000
+        self.initial_exploration = 50000
         self.device = device
         self.n_epochs = 0
         self.n_actors = n_actors
@@ -34,14 +34,14 @@ class Learner:
             './', 'logs', 'model', 'target_net.pt')
         
         # memory
-        self.memory_size = 100000
-        self.batch_size = 32
+        self.memory_size = 500000
+        self.batch_size = 128
         self.memory_load_interval = 10
         self.replay_memory = ReplayMemory(self.memory_size, self.batch_size, self.bootstrap_steps)
 
         # net
         self.net_save_interval = 50
-        self.target_update_interval = 10
+        self.target_update_interval = 1000
         self.net = QNet(self.net_path, self.device).to(self.device)
         self.target_net = QNet(self.target_net_path, self.device).to(self.device)
         self.target_net.load_state_dict(self.net.state_dict())
