@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import numpy as np
 
 import fasteners
 import os
@@ -80,6 +81,28 @@ class QNet(nn.Module):
         return Q
     
     def save(self):
+        lock = fasteners.ReaderWriterLock()
+        while True:
+            try:
+                with lock.write_lock():
+                    torch.save(self.state_dict(), self.path)
+                return
+            except:
+                sleep(np.random.random()+1)
+    
+    def load(self):
+        lock = fasteners.ReaderWriterLock()
+        while True:
+            try:
+                with lock.read_lock():
+                    state_dict = torch.load(self.path)
+                self.load_state_dict(state_dict)
+                return
+            except:
+                sleep(np.random.random()+1)
+    
+    """
+    def save(self):
         lock = fasteners.InterProcessLock(self.path)
         while True:
             #try:
@@ -101,3 +124,4 @@ class QNet(nn.Module):
                 return
             #except:
             sleep(0.2)
+    """
