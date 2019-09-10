@@ -51,6 +51,8 @@ class ReplayMemory:
         self.action_repeat = action_repeat
         self.n_stacks = n_stacks // action_repeat
         self.alpha = alpha
+        self.beta = 0.4
+        self.beta_step = 0.00025 / 4
 
         self.memory = dict()
         self.memory['state'] = np.zeros((self.memory_size, *self.state_size), dtype=np.uint8)
@@ -145,20 +147,18 @@ class ReplayMemory:
         return stacked_state
 
     def sample(self, device='cpu'):
-        priority = self.memory['priority'][:min(self.index, self.memory_size)]
-        priority = priority / np.sum(priority)
-        #index = WeightedRandomSampler(
-        #    priority,
-        #    self.batch_size)
-        #index = np.array(list(index), dtype=np.int8)
-        index = np.random.randint(0, self.size, self.batch_size)
+        priority = self.memory['priority'][:self.size]
+        index = WeightedRandomSampler(
+            priority / np.sum(priority),
+            self.batch_size,
+            replacement=True)
+        index = np.array(list(index))
+        #index = np.random.randint(0, self.size, self.batch_size)
         next_index = (index + self.n_step) % self.memory_size
 
         batch = dict()
         batch['state'] = np.stack([self.get_stacked_state(i) for i in index])
         batch['next_state'] = np.stack([self.get_stacked_state(i) for i in next_index])
-        #batch['state'] = self.memory['state'][index]
-        #batch['next_state'] = self.memory['state'][next_index]
         batch['action'] = self.memory['action'][index]
         batch['reward'] = self.memory['reward'][index]
         batch['done'] = self.memory['done'][index]
@@ -170,22 +170,25 @@ class ReplayMemory:
             batch[key] = torch.FloatTensor(batch[key]).to(device)
         batch['action'] = batch['action'].long()
 
-        #weights = (self.size * priority[index]) ** (-self.importance_exp)
-        #weights /= np.max(weights)
-        weights = np.ones(priority.shape)
+        self.beta = min(self.beta + self.beta_step, 1)
+        weights = (self.size * priority[index]) ** (-self.beta)
+        weights /= np.max(weights)
+        weights = torch.FloatTensor(weights).to(device)
+        #weights = np.ones(priority.shape)
 
         return batch, index, weights
     
-    def sample_full_batch(self):
-        batch = dict()
-        #batch['state'] = np.stack([self.get_stacked_state(i) for i in range(self.size)])
-        #batch['next_state'] = np.stack([self.get_stacked_state(i%self.memory_size) for i in range(self.n_step, self.size+self.n_step)])
-        batch['state'] = self.memory['state'][:self.size]
-        batch['next_state'] = self.memory['state'][1:self.size+1]
-        batch['action'] = self.memory['action'][:self.size]
-        batch['reward'] = self.memory['reward'][:self.size]
-        batch['done'] = self.memory['done'][:self.size]
+    def indexing_sample(self, start_index, last_index, device='cpu'):
+        index = np.array([i for i in range(start_index, last_index)])
+        next_index = index + self.n_step
 
-        #batch['state'] = batch['state'].astype(np.float32) / 255.
-        #batch['next_state'] = batch['next_state'].astype(np.float32) / 255.
-        return batch
+        batch = dict()
+        batch['state'] = np.stack([self.get_stacked_state(i) for i in index])
+        batch['next_state'] = np.stack([self.get_stacked_state(i%self.memory_size) for i in next_index])
+        batch['action'] = self.memory['action'][index]
+        batch['reward'] = self.memory['reward'][index]
+        batch['done'] = self.memory['done'][index]
+
+        batch['state'] = batch['state'].astype(np.float32) / 255.
+        batch['next_state'] = batch['next_state'].astype(np.float32) / 255.
+        return batch, index

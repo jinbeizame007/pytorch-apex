@@ -6,6 +6,7 @@ import numpy as np
 import fasteners
 import os
 from time import sleep
+from copy import deepcopy
 
 
 class QNet(nn.Module):
@@ -85,7 +86,7 @@ class QNet(nn.Module):
         while True:
             try:
                 with lock.write_lock():
-                    torch.save(self.state_dict(), self.path)
+                    torch.save(deepcopy(self).cpu().state_dict(), self.path)
                 return
             except:
                 sleep(np.random.random()+1)

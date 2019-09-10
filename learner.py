@@ -21,6 +21,7 @@ class Learner:
         self.alpha = 0.6
         self.bootstrap_steps = 1
         self.initial_exploration = 50000
+        self.priority_epsilon = 1e-6
         self.device = device
         self.n_epochs = 0
         self.n_actors = n_actors
@@ -56,23 +57,18 @@ class Learner:
             self.interval()
     
     def train(self):
-        #print('1')
         batch, index, weights = self.replay_memory.sample(self.device)
-        #print('2', batch['state'].size())
 
         # q_value
         q_value = self.net(batch['state'])
-        #print('2.5')
         q_value = q_value.gather(1, batch['action'])
 
-        #print('3')
         # target q_value
         with torch.no_grad():
             next_action = torch.argmax(
                 self.net(batch["next_state"]), 1).view(-1, 1)
             next_q_value = self.target_net(
                     batch["next_state"]).gather(1, next_action)
-            #print(batch['done'].view(-1))
             target_q_value = batch["reward"] + (self.gamma**self.bootstrap_steps) * next_q_value * (1 - batch['done'])
         
         # update
@@ -80,6 +76,9 @@ class Learner:
         loss = torch.mean(0.5 * (q_value - target_q_value) ** 2)
         loss.backward()
         self.optim.step()
+
+        priority = (np.abs((q_value - target_q_value).detach().cpu().numpy()).reshape(-1) + self.priority_epsilon) ** self.alpha
+        self.replay_memory.update_priority(index, priority)
 
     def interval(self):
         self.n_epochs += 1

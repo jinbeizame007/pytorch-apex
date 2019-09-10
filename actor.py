@@ -20,6 +20,7 @@ class Actor:
         self.epsilon = 0.4 ** (1 + actor_id * 7 / (n_actors - 1))
         self.bootstrap_steps = 1
         self.alpha = 0.6
+        self.priority_epsilon = 1e-6
         self.device = device
         self.actor_id = actor_id
 
@@ -91,6 +92,7 @@ class Actor:
         if self.n_episodes % 1 == 0:
             print('episodes:', self.n_episodes, 'actor_id:', self.actor_id, 'return:', self.episode_reward)
 
+        self.calc_priority()
         self.state = self.env.reset()
         self.episode_reward = 0
         self.n_episodes += 1
@@ -109,3 +111,40 @@ class Actor:
         if self.n_episodes % self.net_load_interval == 0:
             self.net.load()
             self.target_net.load()
+    
+    def calc_priority(self):
+        last_index = self.replay_memory.size
+        start_index  = last_index - (self.n_steps - (self.bootstrap_steps - 1))
+
+        batch, index = self.replay_memory.indexing_sample(start_index, last_index, self.device)
+        batch_size = batch['state'].shape[0]
+        priority = np.zeros(batch_size, dtype=np.float32)
+
+        mini_batch_size = 500
+        for start_index in range(0, batch_size, mini_batch_size):
+            last_index = min(start_index + mini_batch_size, batch_size)
+            mini_batch = dict()
+            for key in batch.keys():
+                if key in ['reward', 'done']:
+                    mini_batch[key] = batch[key][start_index: last_index]
+                else:
+                    mini_batch[key] = torch.tensor(batch[key][start_index: last_index]).to(self.device)
+            mini_batch['action'] = mini_batch['action'].view(-1,1).long()
+
+            with torch.no_grad():
+                # q_value
+                q_value = self.net(
+                    mini_batch['state']).gather(1, mini_batch['action']).view(-1,1).cpu().numpy()
+
+                # taget_q_value
+                next_action = torch.argmax(self.net(
+                    mini_batch['next_state']), 1).view(-1,1)
+                next_q_value = self.target_net(
+                    mini_batch['next_state']).gather(1, next_action).cpu().numpy()
+            
+            target_q_value = mini_batch['reward'] + (self.gamma**self.bootstrap_steps) * next_q_value * (1 - mini_batch['done'])
+            delta = np.abs(q_value - target_q_value).reshape(-1) + self.priority_epsilon
+            delta = delta ** self.alpha
+            priority[start_index: last_index] = delta
+        
+        self.replay_memory.update_priority(index, priority)
