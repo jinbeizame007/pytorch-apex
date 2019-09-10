@@ -18,7 +18,7 @@ class Actor:
         # params
         self.gamma = 0.99
         self.epsilon = 0.4 ** (1 + actor_id * 7 / (n_actors - 1))
-        self.bootstrap_steps = 1
+        self.bootstrap_steps = 3
         self.alpha = 0.6
         self.priority_epsilon = 1e-6
         self.device = device
@@ -53,6 +53,7 @@ class Actor:
         self.episode_reward = 0
         self.n_episodes = 0
         self.n_steps = 0
+        self.memory_count = 0
         self.state = self.env.reset()
     
     def run(self):
@@ -73,9 +74,14 @@ class Actor:
         if self.n_steps > self.bootstrap_steps:
             state, action, reward, stack_count = self.n_steps_memory.get()
             self.replay_memory.add(state, action, reward, done, stack_count)
+            self.memory_count += 1
         self.state = next_state.copy()
 
         if done:
+            while self.n_steps_memory.size > 0:
+                state, action, reward, stack_count = self.n_steps_memory.get()
+                self.replay_memory.add(state, action, reward, done, stack_count)
+                self.memory_count += 1
             self.reset()
     
     def select_action(self, state):
@@ -97,6 +103,7 @@ class Actor:
         self.episode_reward = 0
         self.n_episodes += 1
         self.n_steps = 0
+        self.memory_count = 0
         self.stack_count = self.n_stacks // self.action_repeat
 
         # reset n_step memory
@@ -114,7 +121,7 @@ class Actor:
     
     def calc_priority(self):
         last_index = self.replay_memory.size
-        start_index  = last_index - (self.n_steps - (self.bootstrap_steps - 1))
+        start_index  = last_index - self.memory_count
 
         batch, index = self.replay_memory.indexing_sample(start_index, last_index, self.device)
         batch_size = batch['state'].shape[0]

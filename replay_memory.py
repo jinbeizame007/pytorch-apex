@@ -18,6 +18,10 @@ class NStepMemory(dict):
         self.action = deque(maxlen=memory_size)
         self.reward = deque(maxlen=memory_size)
         self.stack_count = deque(maxlen=memory_size)
+    
+    @property
+    def size(self):
+        return len(self.state)
 
     def add(self, state, action, reward, stack_count):
         self.state.append(state)
@@ -174,7 +178,6 @@ class ReplayMemory:
         weights = (self.size * priority[index]) ** (-self.beta)
         weights /= np.max(weights)
         weights = torch.FloatTensor(weights).to(device)
-        #weights = np.ones(priority.shape)
 
         return batch, index, weights
     

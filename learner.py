@@ -19,7 +19,7 @@ class Learner:
         # params
         self.gamma = 0.99
         self.alpha = 0.6
-        self.bootstrap_steps = 1
+        self.bootstrap_steps = 3
         self.initial_exploration = 50000
         self.priority_epsilon = 1e-6
         self.device = device
